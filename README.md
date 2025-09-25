@@ -2,6 +2,24 @@ WWW SQL Designer allows users to create database designs, which can be saved/loa
 
 [YouTube video](http://www.youtube.com/watch?v=hCQzJx9AKhU), [User manual](https://github.com/ondras/wwwsqldesigner/wiki/Manual)
 
+# Fork 
+
+## Requirements
+
+This fork was created to 
+- support onboarding of new engineers at Dyconex by providing a user-friendly overview of our database structure
+- efficiently access and combine data columns, which are stored in different tables
+
+## Open Tasks
+
+- [x] Export private keys and foreign keys from SQL database. 
+  - [x] SQL queries
+  - [x] output files
+- [ ] Create user-friendly graphical representation of links between tables. 
+  - [ ] convert lists of private and foreign keys into xml-format to be loaded in sql_designer
+- [ ] Create SQL query to join tables containing target columns as chosen by user
+  - [ ] join_cols.py
+
 # About
 
 Hi and welcome to WWW SQL Designer! This tool allows you to draw and create database schemas (E-R diagrams) directly in browser, without the need for any external programs (flash). You only need JavaScript enabled.
