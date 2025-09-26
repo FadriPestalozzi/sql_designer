@@ -52,29 +52,27 @@ class Table:
         self.connections += 1
     
     def calculate_dimensions(self):
-        """Calculate table dimensions based on content"""
-        # More accurate dimensions based on SQL Designer rendering
-        char_width = 9  # Slightly wider for better accuracy
-        row_height = 18  # Row height in SQL Designer
-        header_height = 30  # Header height
-        min_width = 160  # Minimum table width
-        padding_width = 20  # Left/right padding
-        padding_height = 15  # Top/bottom padding
+        """Calculate exact table dimensions based on actual content"""
+        # Very precise measurements based on SQL Designer rendering characteristics
+        char_width = 9.0   # Character width in pixels (conservative estimate)
+        row_height = 18    # Each row height in pixels including line spacing
+        header_height = 28 # Table header/title height with proper spacing
+        min_width = 140    # Increased minimum width for better visibility
+        padding_width = 24 # Increased left/right padding
+        padding_height = 12 # Increased top/bottom padding
         
-        # Calculate width based on longest text (table name or column name)
+        # Calculate exact width based on longest text (table name or any column name)
         max_text_length = len(self.name)
         for column_name in self.columns:
             max_text_length = max(max_text_length, len(column_name))
         
-        # Add extra width for foreign key indicators and datatypes
-        self.width = max(min_width, max_text_length * char_width + padding_width * 2)
-        
-        # Calculate height: header + (number of columns * row height) + padding
+        # Calculate exact dimensions
+        self.width = max(min_width, max_text_length * char_width + padding_width)
         self.height = header_height + len(self.columns) * row_height + padding_height
         
-        # Ensure minimum dimensions for very small tables
-        self.width = max(self.width, 140)
-        self.height = max(self.height, 60)
+        # Round up to avoid sub-pixel issues
+        self.width = int(self.width + 0.5)
+        self.height = int(self.height + 0.5)
     
     def get_connected_tables(self):
         """Get list of tables this table connects to via foreign keys"""
@@ -104,10 +102,14 @@ class Column:
 class SchemaGenerator:
     """Generates XML schema from CSV key files"""
     
+    # Global margin for table spacing
+    MARGIN = 10
+    
     def __init__(self, primary_keys_file, foreign_keys_file):
         self.primary_keys_file = primary_keys_file
         self.foreign_keys_file = foreign_keys_file
         self.tables = {}  # table_name -> Table object
+        self.occupied_areas = []  # Track all occupied rectangular areas
     
     def read_primary_keys(self):
         """Read primary key definitions from CSV"""
@@ -178,8 +180,8 @@ class SchemaGenerator:
         print(f"Calculated connections for all tables")
     
     def position_tables_intelligently(self):
-        """Position tables using an intelligent layout algorithm"""
-        print("Arranging tables intelligently...")
+        """Position tables using clustering algorithm to minimize connection lengths"""
+        print("Arranging tables using clustering algorithm...")
         
         # Calculate table dimensions first
         for table in self.tables.values():
@@ -188,48 +190,36 @@ class SchemaGenerator:
         # Calculate total connections for ranking
         self.calculate_table_connections()
         
-        # Canvas dimensions
-        canvas_width = 2400
-        canvas_height = 1800
-        center_x = canvas_width // 2
-        center_y = canvas_height // 2
+        # Initial canvas dimensions (will expand as needed)
+        self.canvas_width = 2400
+        self.canvas_height = 1800
+        self.center_x = self.canvas_width // 2
+        self.center_y = self.canvas_height // 2
         
-        # Sort tables by connection count (most connected first)
-        sorted_tables = sorted(self.tables.values(), key=lambda t: t.connections, reverse=True)
-        
-        print(f"Most connected table: {sorted_tables[0].name} with {sorted_tables[0].connections} connections")
-        
-        # Show top 10 most connected tables with dimensions
-        print("Top 10 most connected tables:")
-        for i, table in enumerate(sorted_tables[:10]):
-            print(f"  {i+1:2d}. {table.name:25s} - {table.connections:2d} connections - {table.width:3.0f}x{table.height:3.0f}px")
-        
-        positioned_tables = []
-        
-        # Position the most connected table at center
-        center_table = sorted_tables[0]
-        center_table.x = center_x - center_table.width // 2
-        center_table.y = center_y - center_table.height // 2
-        center_table.is_positioned = True
-        positioned_tables.append(center_table)
-        
-        # Position tables level by level
-        for table in sorted_tables[1:]:
-            if not table.is_positioned:
-                self.position_table_near_connections(table, positioned_tables, canvas_width, canvas_height)
-                positioned_tables.append(table)
+        # Use new clustering algorithm
+        self.position_tables_with_clustering()
         
         print("Table arrangement completed")
+        print(f"Final canvas size: {self.canvas_width}x{self.canvas_height}")
+        print(f"Total occupied areas tracked: {len(self.occupied_areas)}")
         
         # Show positioning statistics
         center_area_count = 0
         for table in self.tables.values():
-            if (center_x - 300 <= table.x + table.width//2 <= center_x + 300 and 
-                center_y - 300 <= table.y + table.height//2 <= center_y + 300):
+            if (self.center_x - 300 <= table.x + table.width//2 <= self.center_x + 300 and 
+                self.center_y - 300 <= table.y + table.height//2 <= self.center_y + 300):
                 center_area_count += 1
         
         print(f"Tables positioned in center area (600x600): {center_area_count}")
-        print(f"Most connected tables are clustered near center for optimal visibility")
+        print(f"Area tracking with {self.MARGIN}px margin prevents overlaps")
+        
+        # Verify no overlaps exist in final positions
+        overlap_count = self.verify_no_overlaps()
+        print(f"Final verification: {overlap_count} overlaps detected (should be 0)")
+        
+        # Calculate total connection length
+        total_length = self.calculate_total_connection_length()
+        print(f"Total connection length: {total_length:.2f} pixels")
     
     def position_table_near_connections(self, table, positioned_tables, canvas_width, canvas_height):
         """Position a table near its connected tables"""
@@ -251,11 +241,10 @@ class SchemaGenerator:
         
         # Try positions around the anchor point with expanding radius
         best_position = None
-        min_overlap = float('inf')
         
-        # Try multiple radii for better placement
-        for radius in [250, 350, 450, 550]:
-            for angle in range(0, 360, 15):  # Check positions every 15 degrees
+        # Try multiple radii for better placement with larger initial radius
+        for radius in [300, 400, 500, 600, 700, 800, 900]:
+            for angle in range(0, 360, 10):  # Check positions every 10 degrees for better coverage
                 rad = math.radians(angle)
                 test_x = avg_x + radius * math.cos(rad) - table.width // 2
                 test_y = avg_y + radius * math.sin(rad) - table.height // 2
@@ -264,19 +253,13 @@ class SchemaGenerator:
                 test_x = max(10, min(test_x, canvas_width - table.width - 10))
                 test_y = max(10, min(test_y, canvas_height - table.height - 10))
                 
-                # Check for overlaps
-                overlap_score = self.calculate_overlap_score(test_x, test_y, table.width, table.height, positioned_tables)
-                
-                if overlap_score < min_overlap:
-                    min_overlap = overlap_score
+                # Check if this area is completely free
+                if self.is_area_free(test_x, test_y, table.width, table.height):
                     best_position = (test_x, test_y)
-                
-                # If we found a position with no overlaps, use it immediately
-                if overlap_score == 0:
                     break
             
-            # If we found a non-overlapping position, no need to try larger radii
-            if min_overlap == 0:
+            # If we found a free position, no need to try larger radii
+            if best_position:
                 break
         
         if best_position:
@@ -286,11 +269,244 @@ class SchemaGenerator:
             table.x, table.y = self.find_available_space(table, positioned_tables, canvas_width, canvas_height)
         
         table.is_positioned = True
+        
+        # Track the occupied area for this table
+        self.add_occupied_area(table.x, table.y, table.width, table.height)
+        
+        # Track the occupied area
+        self.add_occupied_area(table.x, table.y, table.width, table.height)
+    
+    def add_occupied_area(self, x, y, width, height):
+        """Add an occupied rectangular area to prevent future overlaps"""
+        # Store the area with margin included
+        occupied_rect = {
+            'x1': x - self.MARGIN,
+            'y1': y - self.MARGIN, 
+            'x2': x + width + self.MARGIN,
+            'y2': y + height + self.MARGIN
+        }
+        self.occupied_areas.append(occupied_rect)
+    
+    def is_area_free(self, x, y, width, height):
+        """Check if a rectangular area is completely free of overlaps"""
+        test_rect = {
+            'x1': x - self.MARGIN,
+            'y1': y - self.MARGIN,
+            'x2': x + width + self.MARGIN, 
+            'y2': y + height + self.MARGIN
+        }
+        
+        # Check against all occupied areas
+        for occupied in self.occupied_areas:
+            # Check if rectangles overlap
+            if not (test_rect['x2'] <= occupied['x1'] or  # test is completely to the left
+                   test_rect['x1'] >= occupied['x2'] or   # test is completely to the right
+                   test_rect['y2'] <= occupied['y1'] or   # test is completely above
+                   test_rect['y1'] >= occupied['y2']):    # test is completely below
+                return False  # Overlap detected
+        
+        return True  # No overlaps found
+    
+    def verify_no_overlaps(self):
+        """Verify that no tables actually overlap in their final positions"""
+        overlap_count = 0
+        tables_list = list(self.tables.values())
+        
+        for i, table1 in enumerate(tables_list):
+            for table2 in tables_list[i+1:]:
+                # Check if tables overlap (without margin for actual overlap check)
+                if not (table1.x + table1.width <= table2.x or  # table1 is completely to the left
+                       table1.x >= table2.x + table2.width or   # table1 is completely to the right
+                       table1.y + table1.height <= table2.y or  # table1 is completely above
+                       table1.y >= table2.y + table2.height):   # table1 is completely below
+                    overlap_count += 1
+                    print(f"  OVERLAP: {table1.name} ({table1.x},{table1.y} {table1.width}x{table1.height}) overlaps {table2.name} ({table2.x},{table2.y} {table2.width}x{table2.height})")
+        
+        return overlap_count
+    
+    def position_tables_with_clustering(self):
+        """Position tables using the clustering algorithm to minimize connection lengths"""
+        # Global cutoff variable
+        cutoff = 2
+        
+        # Create table_of_tables with required columns
+        table_of_tables = []
+        table_id_map = {}  # table_name -> ID mapping
+        id_table_map = {}  # ID -> table mapping
+        
+        # Build table_of_tables
+        for table_id, (table_name, table) in enumerate(self.tables.items(), 1):
+            table_id_map[table_name] = table_id
+            id_table_map[table_id] = table
+            
+            # Get connected table names
+            connected_names = table.get_connected_tables()
+            
+            table_entry = {
+                'ID': table_id,
+                'table_name': table_name,
+                'table_obj': table,
+                'connections_num': len(connected_names),
+                'connected_names': connected_names,
+                'connections_str': '',  # Will be filled after all IDs are assigned
+                'is_placed': False
+            }
+            table_of_tables.append(table_entry)
+        
+        # Fill connections_str with IDs
+        for entry in table_of_tables:
+            connected_ids = []
+            for connected_name in entry['connected_names']:
+                if connected_name in table_id_map:
+                    connected_ids.append(str(table_id_map[connected_name]))
+            entry['connections_str'] = '_'.join(connected_ids) if connected_ids else ''
+        
+        # Sort by connections_num descending
+        table_of_tables.sort(key=lambda x: x['connections_num'], reverse=True)
+        
+        print(f"Created table_of_tables with {len(table_of_tables)} entries")
+        print(f"Using cutoff value: {cutoff}")
+        
+        # Run clustering iterations
+        iteration = 0
+        while any(not entry['is_placed'] for entry in table_of_tables):
+            iteration += 1
+            print(f"Clustering iteration {iteration}")
+            
+            # Find first unplaced table (highest connections_num among unplaced)
+            temp_top_el = None
+            for entry in table_of_tables:
+                if not entry['is_placed']:
+                    temp_top_el = entry
+                    break
+            
+            if not temp_top_el:
+                break
+                
+            # Place the top element at next free position
+            table_obj = temp_top_el['table_obj']
+            x, y = self.get_next_free_position_near_center(table_obj.width, table_obj.height)
+            table_obj.x = x
+            table_obj.y = y
+            table_obj.is_positioned = True
+            temp_top_el['is_placed'] = True
+            self.add_occupied_area(x, y, table_obj.width, table_obj.height)
+            
+            print(f"  Placed {temp_top_el['table_name']} at ({x}, {y}) with {temp_top_el['connections_num']} connections")
+            
+            # Build temp_block from connections with connections_num <= cutoff
+            temp_block = []
+            if temp_top_el['connections_str']:
+                connected_ids = temp_top_el['connections_str'].split('_')
+                for connected_id_str in connected_ids:
+                    if connected_id_str.isdigit():
+                        connected_id = int(connected_id_str)
+                        if connected_id in id_table_map:
+                            # Find the entry in table_of_tables
+                            for entry in table_of_tables:
+                                if entry['ID'] == connected_id and not entry['is_placed']:
+                                    if entry['connections_num'] <= cutoff:
+                                        temp_block.append(entry)
+                                    break
+            
+            # Sort temp_block by connections_num descending
+            temp_block.sort(key=lambda x: x['connections_num'], reverse=True)
+            
+            # Place elements from temp_block (pop last = minimum connections_num)
+            while temp_block:
+                temp_single_el = temp_block.pop()  # Remove last (minimum connections)
+                
+                # Place as close as possible to temp_top_el
+                single_table_obj = temp_single_el['table_obj']
+                x, y = self.get_next_free_position_near_table(temp_top_el['table_obj'], single_table_obj.width, single_table_obj.height)
+                single_table_obj.x = x
+                single_table_obj.y = y
+                single_table_obj.is_positioned = True
+                temp_single_el['is_placed'] = True
+                self.add_occupied_area(x, y, single_table_obj.width, single_table_obj.height)
+                
+                print(f"    Placed connected {temp_single_el['table_name']} at ({x}, {y}) near {temp_top_el['table_name']}")
+    
+    def get_next_free_position_near_center(self, table_width=200, table_height=150):
+        """Find next free position as close as possible to canvas center"""
+        center_x, center_y = self.center_x, self.center_y
+        
+        # Try positions in expanding rings around center
+        for radius in range(0, max(self.canvas_width, self.canvas_height), 40):
+            for angle in range(0, 360, 12):
+                rad = math.radians(angle)
+                test_x = int(center_x + radius * math.cos(rad))
+                test_y = int(center_y + radius * math.sin(rad))
+                
+                # Check if position is within canvas and free
+                if (10 <= test_x <= self.canvas_width - table_width - 10 and 
+                    10 <= test_y <= self.canvas_height - table_height - 10):
+                    if self.is_area_free(test_x, test_y, table_width, table_height):
+                        return test_x, test_y
+        
+        # If no space found, expand canvas and return edge position
+        self.canvas_width += 400
+        return self.canvas_width - table_width - 20, center_y
+    
+    def get_next_free_position_near_table(self, anchor_table, table_width=200, table_height=150):
+        """Find next free position as close as possible to anchor table"""
+        anchor_x = anchor_table.x + anchor_table.width // 2
+        anchor_y = anchor_table.y + anchor_table.height // 2
+        
+        # Try positions in expanding rings around anchor table
+        for radius in range(60, max(self.canvas_width, self.canvas_height), 25):
+            for angle in range(0, 360, 8):
+                rad = math.radians(angle)
+                test_x = int(anchor_x + radius * math.cos(rad))
+                test_y = int(anchor_y + radius * math.sin(rad))
+                
+                # Check if position is within canvas and free
+                if (10 <= test_x <= self.canvas_width - table_width - 10 and 
+                    10 <= test_y <= self.canvas_height - table_height - 10):
+                    if self.is_area_free(test_x, test_y, table_width, table_height):
+                        return test_x, test_y
+        
+        # If no space found, expand canvas and place at edge
+        if anchor_x > self.canvas_width // 2:
+            self.canvas_width += 400
+            return self.canvas_width - table_width - 20, anchor_y
+        else:
+            self.canvas_height += 300
+            return anchor_x, self.canvas_height - table_height - 20
+    
+    def calculate_total_connection_length(self):
+        """Calculate total pythagorean distance of all connections"""
+        total_length = 0
+        processed_pairs = set()
+        
+        for table in self.tables.values():
+            table_center_x = table.x + table.width // 2
+            table_center_y = table.y + table.height // 2
+            
+            connected_names = table.get_connected_tables()
+            for connected_name in connected_names:
+                if connected_name in self.tables:
+                    # Avoid double counting connections
+                    pair = tuple(sorted([table.name, connected_name]))
+                    if pair not in processed_pairs:
+                        processed_pairs.add(pair)
+                        
+                        other_table = self.tables[connected_name]
+                        other_center_x = other_table.x + other_table.width // 2
+                        other_center_y = other_table.y + other_table.height // 2
+                        
+                        # Calculate pythagorean distance
+                        x_diff = table_center_x - other_center_x
+                        y_diff = table_center_y - other_center_y
+                        distance = math.sqrt(x_diff**2 + y_diff**2)
+                        total_length += distance
+        
+        return total_length
     
     def calculate_overlap_score(self, x, y, width, height, positioned_tables):
         """Calculate overlap score for a potential table position"""
         overlap_score = 0
-        margin = 50  # Increased minimum distance between tables
+        margin = 120  # Very large minimum distance between tables to ensure no overlaps
         
         for other_table in positioned_tables:
             # Check if rectangles overlap (with margin)
@@ -307,16 +523,46 @@ class SchemaGenerator:
         return overlap_score
     
     def find_available_space(self, table, positioned_tables, canvas_width, canvas_height):
-        """Find any available space for a table"""
-        grid_size = 80  # Larger grid size for better spacing
+        """Find any available space for a table, expanding canvas if needed"""
+        grid_size = 80  # Grid size for search
         
+        # First try a systematic search across the current canvas
         for y in range(10, canvas_height - table.height, grid_size):
             for x in range(10, canvas_width - table.width, grid_size):
-                if self.calculate_overlap_score(x, y, table.width, table.height, positioned_tables) == 0:
+                if self.is_area_free(x, y, table.width, table.height):
                     return x, y
         
-        # If no space found, place at bottom right area
-        return canvas_width - table.width - 10, canvas_height - table.height - 10
+        # If no space found, expand the canvas area and try extended regions
+        # Try extending to the right
+        extended_width = canvas_width + 800
+        for y in range(10, canvas_height - table.height, grid_size):
+            for x in range(canvas_width, extended_width - table.width, grid_size):
+                if self.is_area_free(x, y, table.width, table.height):
+                    self.canvas_width = extended_width  # Update canvas size
+                    return x, y
+        
+        # Try extending downward
+        extended_height = canvas_height + 600
+        for y in range(canvas_height, extended_height - table.height, grid_size):
+            for x in range(10, canvas_width - table.width, grid_size):
+                if self.is_area_free(x, y, table.width, table.height):
+                    self.canvas_height = extended_height  # Update canvas size
+                    return x, y
+        
+        # Try extending both directions
+        for y in range(canvas_height, extended_height - table.height, grid_size):
+            for x in range(canvas_width, extended_width - table.width, grid_size):
+                if self.is_area_free(x, y, table.width, table.height):
+                    self.canvas_width = extended_width
+                    self.canvas_height = extended_height
+                    return x, y
+        
+        # Final fallback: place at expanded edge with unique position
+        fallback_x = extended_width - table.width - 20
+        fallback_y = extended_height - table.height - 20 - len(positioned_tables) * 30  # Offset each table
+        self.canvas_width = extended_width
+        self.canvas_height = extended_height
+        return fallback_x, fallback_y
     
     def generate_datatypes_xml(self):
         """Generate the datatypes XML section"""
@@ -409,7 +655,8 @@ def main():
     
     primary_keys_file = os.path.join(base_dir, '1-sql', 'keys-primary.csv')
     foreign_keys_file = os.path.join(base_dir, '1-sql', 'keys-foreign.csv')
-    output_file = os.path.join(base_dir, 'output-schema.xml')
+    output_dir = os.path.join(base_dir, '0-db-schema', '3-output')
+    output_file = os.path.join(output_dir, 'output-schema.xml')
     
     # Check if input files exist
     if not os.path.exists(primary_keys_file):
@@ -419,6 +666,11 @@ def main():
     if not os.path.exists(foreign_keys_file):
         print(f"Error: Foreign keys file not found: {foreign_keys_file}")
         return
+    
+    # Create output directory if it doesn't exist
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+        print(f"Created output directory: {output_dir}")
     
     print("=== SQL Designer Schema Generator ===")
     print(f"Primary keys file: {primary_keys_file}")
