@@ -1,3 +1,4 @@
 # ignore date folder
 0-db-schema/
 1-sql/
+python/__pycache__
