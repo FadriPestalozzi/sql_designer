@@ -390,9 +390,11 @@ class SchemaGenerator:
         print(f"Created table_of_tables with {len(table_of_tables)} entries")
         print(f"Using cutoff value: {cutoff}")
         
+        # Step 0: Place all orphan tables (no connections) at bottom right corner first
+        tables_placed = self.place_orphan_tables(table_of_tables, max_tables_to_place)
+        
         # Enhanced bi-directional clustering algorithm
         flag_table = None  # The FLAG table (most connected table)
-        tables_placed = 0
         
         # Step 1: Place the FLAG table (table with most connections)
         if table_of_tables and tables_placed < max_tables_to_place:
@@ -470,6 +472,105 @@ class SchemaGenerator:
                 break
         
         print(f"Enhanced bi-directional clustering completed. Placed {tables_placed} tables.")
+    
+    def place_orphan_tables(self, table_of_tables, max_tables_to_place):
+        """Place all orphan tables (no connections) at the bottom right corner of the canvas"""
+        orphan_tables = []
+        
+        # Find all tables with no connections
+        for entry in table_of_tables:
+            if entry['connections_num'] == 0:
+                orphan_tables.append(entry)
+
+        if not orphan_tables:
+            print("No orphan tables found")
+            return 0
+
+        print(f"Placing {len(orphan_tables)} orphan tables at bottom right corner")
+        
+        # Sort orphans by name for consistent placement
+        orphan_tables.sort(key=lambda x: x['table_name'])
+        
+        # Calculate actual dimensions for all orphan tables
+        for orphan_entry in orphan_tables:
+            orphan_entry['table_obj'].calculate_dimensions()
+        
+        # Calculate required space using actual table dimensions
+        max_width = max(table['table_obj'].width for table in orphan_tables)
+        max_height = max(table['table_obj'].height for table in orphan_tables)
+        
+        # Estimate area needed - place in rows of up to 4 tables
+        tables_per_row = 4
+        num_rows = (len(orphan_tables) + tables_per_row - 1) // tables_per_row
+        orphan_area_width = (max_width + self.MARGIN) * tables_per_row + self.MARGIN
+        orphan_area_height = (max_height + self.MARGIN) * num_rows + self.MARGIN
+        
+        # Ensure canvas is large enough for orphans at the edge
+        min_canvas_width = self.canvas_width + orphan_area_width
+        min_canvas_height = self.canvas_height + orphan_area_height
+        
+        if self.canvas_width < min_canvas_width:
+            self.canvas_width = min_canvas_width
+        if self.canvas_height < min_canvas_height:
+            self.canvas_height = min_canvas_height
+        
+        # Organize orphans into rows for proper placement
+        orphan_rows = []
+        for i in range(0, len(orphan_tables), tables_per_row):
+            row_tables = orphan_tables[i:i+tables_per_row]
+            orphan_rows.append(row_tables)
+        
+        # Calculate dimensions for each row
+        row_info = []
+        for row_tables in orphan_rows:
+            row_width = sum(table['table_obj'].width for table in row_tables) + (len(row_tables) - 1) * self.MARGIN
+            row_height = max(table['table_obj'].height for table in row_tables)
+            row_info.append({'tables': row_tables, 'width': row_width, 'height': row_height})
+        
+        # Start from bottom-right corner of canvas
+        current_y = self.canvas_height - self.MARGIN
+        tables_placed = 0
+        
+        # Place rows from bottom to top
+        for row_idx in reversed(range(len(row_info))):
+            row = row_info[row_idx]
+            
+            # Position this row's Y coordinate
+            current_y -= row['height']
+            
+            # Start X position from the right edge of canvas
+            current_x = self.canvas_width - self.MARGIN
+            
+            # Place tables in this row from right to left
+            for table_idx in reversed(range(len(row['tables']))):
+                if tables_placed >= max_tables_to_place:
+                    break
+                    
+                orphan_entry = row['tables'][table_idx]
+                table_obj = orphan_entry['table_obj']
+                
+                # Position table at right edge minus its width
+                current_x -= table_obj.width
+                
+                # Place the orphan table
+                table_obj.x = current_x
+                table_obj.y = current_y
+                table_obj.is_positioned = True
+                orphan_entry['is_placed'] = True
+                self.add_occupied_area(current_x, current_y, table_obj.width, table_obj.height)
+                tables_placed += 1
+                
+                print(f"  Placed orphan {orphan_entry['table_name']} at ({current_x}, {current_y}) size ({table_obj.width}x{table_obj.height})")
+                
+                # Move to next position (leftward)
+                current_x -= self.MARGIN
+            
+            # Move up for next row
+            if row_idx > 0:  # Don't add margin after the top row
+                current_y -= self.MARGIN
+        
+        print(f"Successfully placed {tables_placed} orphan tables")
+        return tables_placed
     
     def place_direct_children(self, parent_entry, table_of_tables, tables_placed, max_tables_to_place):
         """Place tables that are only connected to the parent table (direct children) in touching stacks"""
