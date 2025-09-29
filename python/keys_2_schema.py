@@ -548,9 +548,9 @@ class SchemaGenerator:
         # Try positions starting from center and expanding outward
         center_x, center_y = self.center_x, self.center_y
         
-        # Try positions in expanding rings around center
-        for radius in range(0, max(self.canvas_width, self.canvas_height), 50):
-            for angle in range(0, 360, 15):
+        # Try positions in expanding rings around center with fine granularity
+        for radius in range(0, max(self.canvas_width, self.canvas_height), 25):  # Smaller radius steps
+            for angle in range(0, 360, 4):  # Much finer angle steps (90 positions per ring)
                 rad = math.radians(angle)
                 test_x = int(center_x + radius * math.cos(rad))
                 test_y = int(center_y + radius * math.sin(rad))
@@ -616,9 +616,9 @@ class SchemaGenerator:
         """Find next free position as close as possible to canvas center"""
         center_x, center_y = self.center_x, self.center_y
         
-        # Try positions in expanding rings around center
-        for radius in range(0, max(self.canvas_width, self.canvas_height), 40):
-            for angle in range(0, 360, 12):
+        # Try positions in expanding rings around center with fine granularity
+        for radius in range(0, max(self.canvas_width, self.canvas_height), 20):  # Smaller radius steps
+            for angle in range(0, 360, 3):  # Much finer angle steps (120 positions per ring)
                 rad = math.radians(angle)
                 test_x = int(center_x + radius * math.cos(rad))
                 test_y = int(center_y + radius * math.sin(rad))
@@ -638,9 +638,9 @@ class SchemaGenerator:
         anchor_x = anchor_table.x + anchor_table.width // 2
         anchor_y = anchor_table.y + anchor_table.height // 2
         
-        # Try positions in expanding rings around anchor table
-        for radius in range(60, max(self.canvas_width, self.canvas_height), 25):
-            for angle in range(0, 360, 8):
+        # Try positions in expanding rings around anchor table with fine granularity
+        for radius in range(60, max(self.canvas_width, self.canvas_height), 15):  # Smaller radius steps
+            for angle in range(0, 360, 2):  # Much finer angle steps (180 positions per ring)
                 rad = math.radians(angle)
                 test_x = int(anchor_x + radius * math.cos(rad))
                 test_y = int(anchor_y + radius * math.sin(rad))
