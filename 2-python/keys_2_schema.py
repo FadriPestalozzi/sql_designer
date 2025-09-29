@@ -1293,22 +1293,22 @@ class SchemaGenerator:
         print(f"Successfully generated XML schema with {len(self.tables)} tables")
 
 def find_csv_folders(base_dir):
-    """Find all folders containing CSV files in the 1-sql directory"""
-    sql_dir = os.path.join(base_dir, '1-sql')
+    """Find all folders containing CSV files in the 0-data/csv directory"""
+    csv_dir = os.path.join(base_dir, '0-data', 'csv')
     csv_folders = []
     
-    if not os.path.exists(sql_dir):
+    if not os.path.exists(csv_dir):
         return csv_folders
     
-    # Check for CSV files directly in 1-sql directory (legacy)
-    primary_file = os.path.join(sql_dir, 'keys-primary.csv')
-    foreign_file = os.path.join(sql_dir, 'keys-foreign.csv')
+    # Check for CSV files directly in csv directory (legacy)
+    primary_file = os.path.join(csv_dir, 'keys-primary.csv')
+    foreign_file = os.path.join(csv_dir, 'keys-foreign.csv')
     if os.path.exists(primary_file) and os.path.exists(foreign_file):
-        csv_folders.append(('1-sql', sql_dir))
+        csv_folders.append(('csv', csv_dir))
     
     # Check subdirectories for CSV files
-    for item in os.listdir(sql_dir):
-        item_path = os.path.join(sql_dir, item)
+    for item in os.listdir(csv_dir):
+        item_path = os.path.join(csv_dir, item)
         if os.path.isdir(item_path):
             primary_file = os.path.join(item_path, 'keys-primary.csv')
             foreign_file = os.path.join(item_path, 'keys-foreign.csv')
@@ -1359,7 +1359,7 @@ def main():
     # Set up file paths based on selected folder
     primary_keys_file = os.path.join(folder_path, 'keys-primary.csv')
     foreign_keys_file = os.path.join(folder_path, 'keys-foreign.csv')
-    output_dir = os.path.join(base_dir, '0-xml')
+    output_dir = os.path.join(base_dir, '0-data')
     output_filename = f'{folder_name}-schema.xml'
     output_file = os.path.join(output_dir, output_filename)
     

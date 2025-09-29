@@ -1,0 +1,24 @@
+USE DWH_Dyconex; 
+GO
+
+SELECT
+    fk.name AS ForeignKey,
+    tp.name AS ParentTable,
+    ref.name AS ReferencedTable,
+    cp.name AS ParentColumn,
+    cr.name AS ReferencedColumn
+FROM sys.foreign_keys fk
+INNER JOIN sys.foreign_key_columns fkc 
+	ON fkc.constraint_object_id = fk.object_id
+INNER JOIN sys.tables tp 
+	ON fkc.parent_object_id = tp.object_id
+INNER JOIN sys.columns cp 
+	ON fkc.parent_object_id = cp.object_id 
+	AND fkc.parent_column_id = cp.column_id
+INNER JOIN sys.tables ref 
+	ON fkc.referenced_object_id = ref.object_id
+INNER JOIN sys.columns cr 
+	ON fkc.referenced_object_id = cr.object_id 
+	AND fkc.referenced_column_id = cr.column_id
+ORDER BY ForeignKey;
+
