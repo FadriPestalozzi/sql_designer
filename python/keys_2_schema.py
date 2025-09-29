@@ -5,7 +5,7 @@ keys_2_schema.py
 This script reads primary and foreign key information from CSV files 
 and generates an XML schema file compatible with WWW SQL Designer.
 
-Input files:
+Input file        max_tables_to_place = 3  # Set to a number like 10, 20, etc. for debugging, or None for all tables:
 - 1-sql/keys-primary.csv: Contains primary key definitions
 - 1-sql/keys-foreign.csv: Contains foreign key relationships
 
@@ -198,7 +198,7 @@ class SchemaGenerator:
         
         # Use new clustering algorithm
         # For debugging: set max_tables_to_place to limit placement
-        max_tables_to_place = 10  # Set to a number like 10, 20, etc. for debugging, or None for all tables
+        max_tables_to_place = 3  # Set to a number like 10, 20, etc. for debugging, or None for all tables
         self.position_tables_with_clustering(max_tables_to_place)
         
         print("Table arrangement completed")
@@ -352,7 +352,7 @@ class SchemaGenerator:
                 'ID': table_id,
                 'table_name': table_name,
                 'table_obj': table,
-                'connections_num': len(connected_names),
+                'connections_num': table.connections,
                 'connected_names': connected_names,
                 'connections_str': '',  # Will be filled after all IDs are assigned
                 'is_placed': False
@@ -367,8 +367,8 @@ class SchemaGenerator:
                     connected_ids.append(str(table_id_map[connected_name]))
             entry['connections_str'] = '_'.join(connected_ids) if connected_ids else ''
         
-        # Sort by connections_num descending
-        table_of_tables.sort(key=lambda x: x['connections_num'], reverse=True)
+        # Sort by connections_num descending, then by table name for consistency
+        table_of_tables.sort(key=lambda x: (x['connections_num'], x['table_name']), reverse=True)
         
         print(f"Created table_of_tables with {len(table_of_tables)} entries")
         print(f"Using cutoff value: {cutoff}")
@@ -422,11 +422,11 @@ class SchemaGenerator:
                                         temp_block.append(entry)
                                     break
             
-            # Sort temp_block by connections_num descending
-            temp_block.sort(key=lambda x: x['connections_num'], reverse=True)
+            # Sort temp_block by connections_num descending, then by table name for consistency
+            temp_block.sort(key=lambda x: (x['connections_num'], x['table_name']), reverse=True)
             
             # Place elements from temp_block (pop last = minimum connections_num)
-            while temp_block:
+            while temp_block and tables_placed < max_tables_to_place:
                 temp_single_el = temp_block.pop()  # Remove last (minimum connections)
                 
                 # Place as close as possible to temp_top_el
