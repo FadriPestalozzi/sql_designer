@@ -1,4 +1,4 @@
 # ignore date folder
-0-db-schema/
+0-xml/
 1-sql/
-python/__pycache__
+2-python/__pycache__

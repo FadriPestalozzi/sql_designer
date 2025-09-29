@@ -4,8 +4,8 @@
 Usage: run the script and follow prompts.
 
 Behavior implemented per user request:
-- loads `0-db-schema\2-col-names\vs-sql9-1-refactored_schemas.txt`
-- prompts user to choose a schema XML from `0-db-schema\1-ID-schemas` (DWH_Dyconex.xml or DycoPlanEx.xml)
+- loads columns
+- prompts user to choose a schema XML
 - prompts for two target column names
 - parses chosen schema XML for <table name> and <row> and <relation table=.. row=..> elements to build a graph of table relationships
 - finds shortest path of table joins (BFS) from a table containing first column to any table containing second column
@@ -23,7 +23,7 @@ from collections import defaultdict, deque
 from typing import Dict, List, Tuple, Set
 
 
-ROOT = os.path.dirname(os.path.dirname(__file__))  # py/ -> project root
+ROOT = os.path.dirname(os.path.dirname(__file__))  
 
 
 def read_colnames_file(path: str):

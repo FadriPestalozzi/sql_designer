@@ -1349,7 +1349,7 @@ def main():
     """Main function to generate schema from CSV files"""
     # File paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    base_dir = os.path.dirname(script_dir)  # Go up one level from python/
+    base_dir = os.path.dirname(script_dir)  
     
     # select input from available CSV folders
     csv_folders = find_csv_folders(base_dir)
@@ -1359,7 +1359,7 @@ def main():
     # Set up file paths based on selected folder
     primary_keys_file = os.path.join(folder_path, 'keys-primary.csv')
     foreign_keys_file = os.path.join(folder_path, 'keys-foreign.csv')
-    output_dir = os.path.join(base_dir, '0-db-schema', '3-output')
+    output_dir = os.path.join(base_dir, '0-xml')
     output_filename = f'{folder_name}-schema.xml'
     output_file = os.path.join(output_dir, output_filename)
     
