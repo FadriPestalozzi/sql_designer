@@ -197,7 +197,9 @@ class SchemaGenerator:
         self.center_y = self.canvas_height // 2
         
         # Use new clustering algorithm
-        self.position_tables_with_clustering()
+        # For debugging: set max_tables_to_place to limit placement
+        max_tables_to_place = 10  # Set to a number like 10, 20, etc. for debugging, or None for all tables
+        self.position_tables_with_clustering(max_tables_to_place)
         
         print("Table arrangement completed")
         print(f"Final canvas size: {self.canvas_width}x{self.canvas_height}")
@@ -324,10 +326,14 @@ class SchemaGenerator:
         
         return overlap_count
     
-    def position_tables_with_clustering(self):
+    def position_tables_with_clustering(self, max_tables_to_place=None):
         """Position tables using the clustering algorithm to minimize connection lengths"""
         # Global cutoff variable
         cutoff = 2
+        
+        # Debug parameter to limit number of tables placed
+        if max_tables_to_place is None:
+            max_tables_to_place = len(self.tables)  # Place all tables by default
         
         # Create table_of_tables with required columns
         table_of_tables = []
@@ -369,7 +375,8 @@ class SchemaGenerator:
         
         # Run clustering iterations
         iteration = 0
-        while any(not entry['is_placed'] for entry in table_of_tables):
+        tables_placed = 0
+        while any(not entry['is_placed'] for entry in table_of_tables) and tables_placed < max_tables_to_place:
             iteration += 1
             print(f"Clustering iteration {iteration}")
             
@@ -391,8 +398,14 @@ class SchemaGenerator:
             table_obj.is_positioned = True
             temp_top_el['is_placed'] = True
             self.add_occupied_area(x, y, table_obj.width, table_obj.height)
+            tables_placed += 1
             
             print(f"  Placed {temp_top_el['table_name']} at ({x}, {y}) with {temp_top_el['connections_num']} connections")
+            
+            # Check if we've reached the limit
+            if tables_placed >= max_tables_to_place:
+                print(f"  Reached limit of {max_tables_to_place} tables placed. Stopping.")
+                break
             
             # Build temp_block from connections with connections_num <= cutoff
             temp_block = []
@@ -424,8 +437,14 @@ class SchemaGenerator:
                 single_table_obj.is_positioned = True
                 temp_single_el['is_placed'] = True
                 self.add_occupied_area(x, y, single_table_obj.width, single_table_obj.height)
+                tables_placed += 1
                 
                 print(f"    Placed connected {temp_single_el['table_name']} at ({x}, {y}) near {temp_top_el['table_name']}")
+                
+                # Check if we've reached the limit
+                if tables_placed >= max_tables_to_place:
+                    print(f"    Reached limit of {max_tables_to_place} tables placed. Stopping.")
+                    break
     
     def get_next_free_position_near_center(self, table_width=200, table_height=150):
         """Find next free position as close as possible to canvas center"""
