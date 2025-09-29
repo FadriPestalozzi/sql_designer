@@ -4,10 +4,41 @@ WWW SQL Designer allows users to create database designs, which can be saved/loa
 
 # Fork 
 
+## Requirements
+
+This fork was created to 
+- support onboarding of new engineers at Dyconex by providing a user-friendly overview of our database structure
+- efficiently access and combine data columns, which are stored in different tables
+
+database tables are clustered according to the following logic
+- start with most-connected table
+- stack single children directly adjacent to their parent table
+  - single children are tables with only 1 connection
+- arrange orphans on bottom right corner
+  - orphan tables currently don't have a defined relation to another table
+  - to include those into the schema, we need to define private/foreign keys
+
+
 ## How To Use
 
-### How to create target query (WIP)
+### How to create target query
 - run join_cols.py
+- choose database
+- enter search term to filter, or number to choose
+  - can iterate to refine filtering e.g. 
+    - ErrorBookings
+      - ErrorPieces
+    - ProductionOrders
+      - Number
+- copy output query to access data, e.g.
+```sql
+USE DWH_Dyconex;
+
+SELECT top 10 *
+FROM production.ErrorBookings AS t0
+INNER JOIN production.ProcessSteps AS t1 ON t0."ProcessStepID" = t1."ProcessStepID"
+INNER JOIN production.ProductionOrders AS t2 ON t1."ProductionOrderID" = t2."ProductionOrderID";
+```
 
 
 ### How to visualize
@@ -24,25 +55,6 @@ WWW SQL Designer allows users to create database designs, which can be saved/loa
 - run python script keys_2_schema.py to create FOLDER_NAME-schema.xml
 
 
-## Requirements
-
-This fork was created to 
-- support onboarding of new engineers at Dyconex by providing a user-friendly overview of our database structure
-- efficiently access and combine data columns, which are stored in different tables
-
-database tables are clustered according to the following logic
-- start with most-connected table
-- stack single children directly adjacent to their parent table
-  - single children are tables with only 1 connection
-- arrange orphans on bottom right corner
-  - orphan tables currently don't have a defined relation to another table
-  - to include those into the schema, we need to define private/foreign keys
-
-
-## Open Tasks
-
-- [ ] Create SQL query to join tables containing target columns as chosen by user
-  - [ ] join_cols.py
 
 # About
 
