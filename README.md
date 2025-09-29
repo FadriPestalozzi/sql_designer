@@ -4,23 +4,43 @@ WWW SQL Designer allows users to create database designs, which can be saved/loa
 
 # Fork 
 
+## How To Use
+
+### How to create target query (WIP)
+- run join_cols.py
+
+
+### How to visualize
+- run index.html (e.g. with LiveServer extension in VS-Code)
+- load contents of CHOSEN-schema.xml
+
+![Load Schema Screenshot](images/load_schema.png)
+
+
+### How to update visualization
+- export private keys and foreign keys from SQL database
+  - queries in folder 1-sql (.gitignored, available on Dyconex internal network)
+- store CSV-output in subfolder with name of chosen database
+- run python script keys_2_schema.py to create FOLDER_NAME-schema.xml
+
+
 ## Requirements
 
 This fork was created to 
 - support onboarding of new engineers at Dyconex by providing a user-friendly overview of our database structure
 - efficiently access and combine data columns, which are stored in different tables
 
+database tables are clustered according to the following logic
+- start with most-connected table
+- stack single children directly adjacent to their parent table
+  - single children are tables with only 1 connection
+- arrange orphans on bottom right corner
+  - orphan tables currently don't have a defined relation to another table
+  - to include those into the schema, we need to define private/foreign keys
+
+
 ## Open Tasks
 
-- [x] Export private keys and foreign keys from SQL database. 
-  - [x] SQL queries
-  - [x] output files
-- [x] Create user-friendly graphical representation of links between tables. 
-  - [x] convert lists of private and foreign keys into xml-format to be loaded in sql_designer
-  - [x] automatic clustering around canvas center
-    - [x] start with most-connected table
-    - [x] stack single children (=tables with only 1 connection) directly adjacent to their parent table
-    - [x] arrange orphans (=tables with 0 connections) on bottom right corner
 - [ ] Create SQL query to join tables containing target columns as chosen by user
   - [ ] join_cols.py
 
