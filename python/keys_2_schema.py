@@ -1292,22 +1292,81 @@ class SchemaGenerator:
         
         print(f"Successfully generated XML schema with {len(self.tables)} tables")
 
+def find_csv_folders(base_dir):
+    """Find all folders containing CSV files in the 1-sql directory"""
+    sql_dir = os.path.join(base_dir, '1-sql')
+    csv_folders = []
+    
+    if not os.path.exists(sql_dir):
+        return csv_folders
+    
+    # Check for CSV files directly in 1-sql directory (legacy)
+    primary_file = os.path.join(sql_dir, 'keys-primary.csv')
+    foreign_file = os.path.join(sql_dir, 'keys-foreign.csv')
+    if os.path.exists(primary_file) and os.path.exists(foreign_file):
+        csv_folders.append(('1-sql', sql_dir))
+    
+    # Check subdirectories for CSV files
+    for item in os.listdir(sql_dir):
+        item_path = os.path.join(sql_dir, item)
+        if os.path.isdir(item_path):
+            primary_file = os.path.join(item_path, 'keys-primary.csv')
+            foreign_file = os.path.join(item_path, 'keys-foreign.csv')
+            if os.path.exists(primary_file) and os.path.exists(foreign_file):
+                csv_folders.append((item, item_path))
+    
+    return csv_folders
+
+def select_csv_folder(csv_folders):
+    """Prompt user to select a CSV folder if multiple are available"""
+    if len(csv_folders) == 0:
+        print("Error: No folders with both keys-primary.csv and keys-foreign.csv found!")
+        return None
+    
+    if len(csv_folders) == 1:
+        folder_name, folder_path = csv_folders[0]
+        print(f"Using CSV files from: {folder_name}")
+        return folder_name, folder_path
+    
+    print("\nMultiple CSV folders found:")
+    for i, (folder_name, folder_path) in enumerate(csv_folders, 1):
+        print(f"  {i}. {folder_name}")
+    
+    while True:
+        try:
+            choice = input(f"\nSelect folder (1-{len(csv_folders)}): ").strip()
+            choice_idx = int(choice) - 1
+            if 0 <= choice_idx < len(csv_folders):
+                folder_name, folder_path = csv_folders[choice_idx]
+                print(f"Selected: {folder_name}")
+                return folder_name, folder_path
+            else:
+                print(f"Please enter a number between 1 and {len(csv_folders)}")
+        except ValueError:
+            print("Please enter a valid number")
+
 def main():
     """Main function to generate schema from CSV files"""
     # File paths
     script_dir = os.path.dirname(os.path.abspath(__file__))
     base_dir = os.path.dirname(script_dir)  # Go up one level from python/
     
-    primary_keys_file = os.path.join(base_dir, '1-sql', 'keys-primary.csv')
-    foreign_keys_file = os.path.join(base_dir, '1-sql', 'keys-foreign.csv')
-    output_dir = os.path.join(base_dir, '0-db-schema', '3-output')
-    output_file = os.path.join(output_dir, 'output-schema.xml')
+    # select input from available CSV folders
+    csv_folders = find_csv_folders(base_dir)
+    selected_folder = select_csv_folder(csv_folders)
+    folder_name, folder_path = selected_folder
     
-    # Check if input files exist
+    # Set up file paths based on selected folder
+    primary_keys_file = os.path.join(folder_path, 'keys-primary.csv')
+    foreign_keys_file = os.path.join(folder_path, 'keys-foreign.csv')
+    output_dir = os.path.join(base_dir, '0-db-schema', '3-output')
+    output_filename = f'{folder_name}-schema.xml'
+    output_file = os.path.join(output_dir, output_filename)
+    
+    # Verify input files exist
     if not os.path.exists(primary_keys_file):
         print(f"Error: Primary keys file not found: {primary_keys_file}")
         return
-    
     if not os.path.exists(foreign_keys_file):
         print(f"Error: Foreign keys file not found: {foreign_keys_file}")
         return
