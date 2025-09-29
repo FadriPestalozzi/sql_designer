@@ -5,7 +5,7 @@ keys_2_schema.py
 This script reads primary and foreign key information from CSV files 
 and generates an XML schema file compatible with WWW SQL Designer.
 
-Input file        max_tables_to_place = 3  # Set to a number like 10, 20, etc. for debugging, or None for all tables:
+Input file        max_table        max_tables_to_place = 20  # Set to a number like 10, 20, etc. for debugging, or None for all tables_to_place = 3  # Set to a number like 10, 20, etc. for debugging, or None for all tables:
 - 1-sql/keys-primary.csv: Contains primary key definitions
 - 1-sql/keys-foreign.csv: Contains foreign key relationships
 
@@ -165,19 +165,36 @@ class SchemaGenerator:
         print(f"Total tables: {len(self.tables)}")
     
     def calculate_table_connections(self):
-        """Calculate connection counts for all tables (including incoming connections)"""
-        # Count outgoing connections (already counted in add_foreign_key)
-        # Now count incoming connections
+        """Calculate bi-directional connection counts for all tables"""
+        # Reset all connection counts
+        for table in self.tables.values():
+            table.connections = 0
+            table.incoming_connections = 0
+            table.outgoing_connections = 0
+        
+        # Count outgoing connections (foreign keys from this table)
         for table_name, table in self.tables.items():
-            incoming_connections = 0
+            connected_tables = table.get_connected_tables()
+            table.outgoing_connections = len(connected_tables)
+        
+        # Count incoming connections (foreign keys pointing to this table)
+        for table_name, table in self.tables.items():
+            incoming_count = 0
             for other_table_name, other_table in self.tables.items():
                 if other_table_name != table_name:
                     connected_tables = other_table.get_connected_tables()
-                    if table_name in connected_tables:
-                        incoming_connections += connected_tables.count(table_name)
-            table.connections += incoming_connections
+                    incoming_count += connected_tables.count(table_name)
+            table.incoming_connections = incoming_count
         
-        print(f"Calculated connections for all tables")
+        # Calculate total bi-directional connections
+        for table in self.tables.values():
+            table.connections = table.incoming_connections + table.outgoing_connections
+        
+        print(f"Calculated bi-directional connections for all tables")
+        # Debug: show connection counts for top connected tables
+        sorted_by_connections = sorted(self.tables.items(), key=lambda x: x[1].connections, reverse=True)
+        for table_name, table in sorted_by_connections[:5]:
+            print(f"  {table_name}: {table.connections} total ({table.incoming_connections} in, {table.outgoing_connections} out)")
     
     def position_tables_intelligently(self):
         """Position tables using clustering algorithm to minimize connection lengths"""
@@ -198,7 +215,7 @@ class SchemaGenerator:
         
         # Use new clustering algorithm
         # For debugging: set max_tables_to_place to limit placement
-        max_tables_to_place = 3  # Set to a number like 10, 20, etc. for debugging, or None for all tables
+        max_tables_to_place = None  # Set to a number like 10, 20, etc. for debugging, or None for all tables
         self.position_tables_with_clustering(max_tables_to_place)
         
         print("Table arrangement completed")
@@ -373,78 +390,227 @@ class SchemaGenerator:
         print(f"Created table_of_tables with {len(table_of_tables)} entries")
         print(f"Using cutoff value: {cutoff}")
         
-        # Run clustering iterations
-        iteration = 0
+        # Enhanced bi-directional clustering algorithm
+        flag_table = None  # The FLAG table (most connected table)
         tables_placed = 0
-        while any(not entry['is_placed'] for entry in table_of_tables) and tables_placed < max_tables_to_place:
-            iteration += 1
-            print(f"Clustering iteration {iteration}")
-            
-            # Find first unplaced table (highest connections_num among unplaced)
-            temp_top_el = None
-            for entry in table_of_tables:
-                if not entry['is_placed']:
-                    temp_top_el = entry
-                    break
-            
-            if not temp_top_el:
-                break
-                
-            # Place the top element at next free position
-            table_obj = temp_top_el['table_obj']
+        
+        # Step 1: Place the FLAG table (table with most connections)
+        if table_of_tables and tables_placed < max_tables_to_place:
+            flag_table = table_of_tables[0]  # Already sorted by connections descending
+            table_obj = flag_table['table_obj']
             x, y = self.get_next_free_position_near_center(table_obj.width, table_obj.height)
             table_obj.x = x
             table_obj.y = y
             table_obj.is_positioned = True
-            temp_top_el['is_placed'] = True
+            flag_table['is_placed'] = True
             self.add_occupied_area(x, y, table_obj.width, table_obj.height)
             tables_placed += 1
             
-            print(f"  Placed {temp_top_el['table_name']} at ({x}, {y}) with {temp_top_el['connections_num']} connections")
+            print(f"FLAG: Placed {flag_table['table_name']} at ({x}, {y}) with {flag_table['connections_num']} total connections")
             
-            # Check if we've reached the limit
-            if tables_placed >= max_tables_to_place:
-                print(f"  Reached limit of {max_tables_to_place} tables placed. Stopping.")
-                break
+            # Place all direct children of FLAG table
+            tables_placed = self.place_direct_children(flag_table, table_of_tables, tables_placed, max_tables_to_place)
+        
+        # Step 2: Continue placement based on connections to FLAG table
+        while tables_placed < max_tables_to_place and flag_table:
+            # Find unplaced table with most connections to the FLAG table
+            best_candidate = None
+            best_connection_count = 0
             
-            # Build temp_block from connections with connections_num <= cutoff
-            temp_block = []
-            if temp_top_el['connections_str']:
-                connected_ids = temp_top_el['connections_str'].split('_')
-                for connected_id_str in connected_ids:
-                    if connected_id_str.isdigit():
-                        connected_id = int(connected_id_str)
-                        if connected_id in id_table_map:
-                            # Find the entry in table_of_tables
-                            for entry in table_of_tables:
-                                if entry['ID'] == connected_id and not entry['is_placed']:
-                                    if entry['connections_num'] <= cutoff:
-                                        temp_block.append(entry)
-                                    break
+            for entry in table_of_tables:
+                if not entry['is_placed']:
+                    # Count connections to FLAG table (bi-directional)
+                    connections_to_flag = 0
+                    
+                    # Check if this table connects to FLAG table (outgoing)
+                    if flag_table['table_name'] in entry['connected_names']:
+                        connections_to_flag += entry['connected_names'].count(flag_table['table_name'])
+                    
+                    # Check if FLAG table connects to this table (incoming)
+                    if entry['table_name'] in flag_table['connected_names']:
+                        connections_to_flag += flag_table['connected_names'].count(entry['table_name'])
+                    
+                    # Use total connections as tiebreaker
+                    if (connections_to_flag > best_connection_count or 
+                        (connections_to_flag == best_connection_count and 
+                         (best_candidate is None or entry['connections_num'] > best_candidate['connections_num']))):
+                        best_candidate = entry
+                        best_connection_count = connections_to_flag
             
-            # Sort temp_block by connections_num descending, then by table name for consistency
-            temp_block.sort(key=lambda x: (x['connections_num'], x['table_name']), reverse=True)
+            # If no table has connections to FLAG, find table with most total connections
+            if best_candidate is None or best_connection_count == 0:
+                for entry in table_of_tables:
+                    if not entry['is_placed']:
+                        if best_candidate is None or entry['connections_num'] > best_candidate['connections_num']:
+                            best_candidate = entry
             
-            # Place elements from temp_block (pop last = minimum connections_num)
-            while temp_block and tables_placed < max_tables_to_place:
-                temp_single_el = temp_block.pop()  # Remove last (minimum connections)
+            # If we found a candidate, place it
+            if best_candidate:
+                table_obj = best_candidate['table_obj']
                 
-                # Place as close as possible to temp_top_el
-                single_table_obj = temp_single_el['table_obj']
-                x, y = self.get_next_free_position_near_table(temp_top_el['table_obj'], single_table_obj.width, single_table_obj.height)
-                single_table_obj.x = x
-                single_table_obj.y = y
-                single_table_obj.is_positioned = True
-                temp_single_el['is_placed'] = True
-                self.add_occupied_area(x, y, single_table_obj.width, single_table_obj.height)
+                # If connected to FLAG, place near FLAG; otherwise place at next center position
+                if best_connection_count > 0:
+                    x, y = self.get_next_free_position_near_table(flag_table['table_obj'], table_obj.width, table_obj.height)
+                    print(f"  Placed {best_candidate['table_name']} at ({x}, {y}) near FLAG ({best_connection_count} connections to FLAG)")
+                else:
+                    x, y = self.get_next_free_position_near_center(table_obj.width, table_obj.height)
+                    print(f"  Placed {best_candidate['table_name']} at ({x}, {y}) with {best_candidate['connections_num']} total connections (new cluster)")
+                
+                table_obj.x = x
+                table_obj.y = y
+                table_obj.is_positioned = True
+                best_candidate['is_placed'] = True
+                self.add_occupied_area(x, y, table_obj.width, table_obj.height)
                 tables_placed += 1
                 
-                print(f"    Placed connected {temp_single_el['table_name']} at ({x}, {y}) near {temp_top_el['table_name']}")
+                # Place all direct children of this newly placed table
+                tables_placed = self.place_direct_children(best_candidate, table_of_tables, tables_placed, max_tables_to_place)
+            else:
+                # No more unplaced tables
+                break
+        
+        print(f"Enhanced bi-directional clustering completed. Placed {tables_placed} tables.")
+    
+    def place_direct_children(self, parent_entry, table_of_tables, tables_placed, max_tables_to_place):
+        """Place tables that are only connected to the parent table (direct children) in touching stacks"""
+        parent_name = parent_entry['table_name']
+        parent_table = parent_entry['table_obj']
+        
+        # Find all unplaced tables that have only 1 connection and are connected to this parent
+        direct_children = []
+        for entry in table_of_tables:
+            if (not entry['is_placed'] and 
+                entry['connections_num'] == 1 and 
+                parent_name in entry['connected_names']):
+                direct_children.append(entry)
+        
+        if not direct_children:
+            return tables_placed
+        
+        # Limit children to fit within max_tables_to_place
+        remaining_slots = max_tables_to_place - tables_placed
+        if len(direct_children) > remaining_slots:
+            direct_children = direct_children[:remaining_slots]
+        
+        # Sort direct children by table name for consistent placement order
+        direct_children.sort(key=lambda x: x['table_name'])
+        
+        print(f"      Placing {len(direct_children)} direct children of {parent_name} in touching stack")
+        
+        # Calculate total stack dimensions
+        total_stack_width = max(parent_table.width, max(child['table_obj'].width for child in direct_children))
+        total_stack_height = parent_table.height + sum(child['table_obj'].height for child in direct_children)
+        
+        print(f"        Total stack dimensions: {total_stack_width}x{total_stack_height}")
+        
+        # Find a free location that can accommodate the entire stack
+        stack_x, stack_y = self.find_free_location_for_stack(total_stack_width, total_stack_height)
+        
+        # Move parent to the stack location (top of stack)
+        print(f"        Moving parent {parent_name} to stack position ({stack_x}, {stack_y})")
+        old_x, old_y = parent_table.x, parent_table.y
+        parent_table.x = stack_x
+        parent_table.y = stack_y
+        
+        # Add the parent's new occupied area (the old area is already in occupied_areas but that's okay for now)
+        self.add_occupied_area(stack_x, stack_y, parent_table.width, parent_table.height)
+        
+        # Place children directly below parent in touching formation
+        current_y = stack_y + parent_table.height
+        
+        for child_entry in direct_children:
+            child_table_obj = child_entry['table_obj']
+            
+            # Position child directly below previous table, left-aligned with stack
+            child_x = stack_x
+            child_y = current_y
+            
+            # Place the child
+            child_table_obj.x = child_x
+            child_table_obj.y = child_y
+            child_table_obj.is_positioned = True
+            child_entry['is_placed'] = True
+            self.add_occupied_area(child_x, child_y, child_table_obj.width, child_table_obj.height)
+            tables_placed += 1
+            
+            print(f"        Stacked {child_entry['table_name']} at ({child_x}, {child_y}) below parent")
+            
+            # Update position for next child
+            current_y += child_table_obj.height
+        
+        print(f"        Successfully stacked all {len(direct_children)} children in touching formation")        
+        return tables_placed
+    
+    def find_free_location_for_stack(self, stack_width, stack_height):
+        """Find a free location that can accommodate the entire stack"""
+        print(f"        Searching for free location for {stack_width}x{stack_height} stack")
+        
+        # Try positions starting from center and expanding outward
+        center_x, center_y = self.center_x, self.center_y
+        
+        # Try positions in expanding rings around center
+        for radius in range(0, max(self.canvas_width, self.canvas_height), 50):
+            for angle in range(0, 360, 15):
+                rad = math.radians(angle)
+                test_x = int(center_x + radius * math.cos(rad))
+                test_y = int(center_y + radius * math.sin(rad))
                 
-                # Check if we've reached the limit
-                if tables_placed >= max_tables_to_place:
-                    print(f"    Reached limit of {max_tables_to_place} tables placed. Stopping.")
-                    break
+                # Ensure the stack fits within canvas bounds
+                if (10 <= test_x <= self.canvas_width - stack_width - 10 and 
+                    10 <= test_y <= self.canvas_height - stack_height - 10):
+                    
+                    # Check if this entire area is free
+                    if self.is_area_free(test_x, test_y, stack_width, stack_height):
+                        print(f"        Found free location at ({test_x}, {test_y})")
+                        return test_x, test_y
+        
+        # If no space found in current canvas, expand and place at edge
+        print(f"        No free location found, expanding canvas")
+        self.canvas_width += 600
+        new_x = self.canvas_width - stack_width - 20
+        new_y = center_y
+        
+        # Ensure new position fits in expanded canvas
+        if new_y + stack_height > self.canvas_height:
+            self.canvas_height = new_y + stack_height + 50
+            
+        return new_x, new_y
+    
+    def update_occupied_area_for_table(self, table):
+        """Update the occupied area for a table that has been moved"""
+        # Remove old occupied areas for this table (this is simplified - in practice we'd need to track which areas belong to which table)
+        # For now, just add the new area since we're only moving within the same placement cycle
+        pass  # The occupied area will be updated when we call add_occupied_area
+    
+    def find_best_stack_direction(self, parent_table):
+        """Determine the best direction (top or bottom) to stack direct children"""
+        # Check available space below the parent
+        space_below = self.canvas_height - (parent_table.y + parent_table.height)
+        
+        # Check available space above the parent
+        space_above = parent_table.y
+        
+        # Check for existing occupied areas with a reasonable test size
+        test_height = min(150, max(space_below, space_above))  # Use standard table height or available space
+        
+        below_clear = (space_below > 20 and 
+                      self.is_area_free(parent_table.x, parent_table.y + parent_table.height, 
+                                       max(200, parent_table.width), test_height))
+        
+        above_clear = (space_above > 20 and 
+                      self.is_area_free(parent_table.x, parent_table.y - test_height, 
+                                       max(200, parent_table.width), test_height))
+        
+        # Debug output
+        print(f"        Stack direction analysis: below_clear={below_clear} (space={space_below}), above_clear={above_clear} (space={space_above})")
+        
+        # Prefer direction with more clear space
+        if below_clear and (not above_clear or space_below >= space_above):
+            return 'bottom'
+        elif above_clear:
+            return 'top'
+        else:
+            return 'bottom'  # Default to bottom and let individual placement handle conflicts
     
     def get_next_free_position_near_center(self, table_width=200, table_height=150):
         """Find next free position as close as possible to canvas center"""
