@@ -15,8 +15,12 @@ This fork was created to
 - [x] Export private keys and foreign keys from SQL database. 
   - [x] SQL queries
   - [x] output files
-- [ ] Create user-friendly graphical representation of links between tables. 
-  - [ ] convert lists of private and foreign keys into xml-format to be loaded in sql_designer
+- [x] Create user-friendly graphical representation of links between tables. 
+  - [x] convert lists of private and foreign keys into xml-format to be loaded in sql_designer
+  - [x] automatic clustering around canvas center
+    - [x] start with most-connected table
+    - [x] stack single children (=tables with only 1 connection) directly adjacent to their parent table
+    - [x] arrange orphans (=tables with 0 connections) on bottom right corner
 - [ ] Create SQL query to join tables containing target columns as chosen by user
   - [ ] join_cols.py
 
