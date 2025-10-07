@@ -2,15 +2,15 @@
 """
 keys_2_schema.py
 
-This script reads primary and foreign key information from CSV files 
+This script reads primary and foreign key information from CSV files
 and generates an XML schema file compatible with WWW SQL Designer.
 
-Input file        max_table        max_tables_to_place = 20  # Set to a number like 10, 20, etc. for debugging, or None for all tables_to_place = 3  # Set to a number like 10, 20, etc. for debugging, or None for all tables:
-- 1-sql/keys-primary.csv: Contains primary key definitions
-- 1-sql/keys-foreign.csv: Contains foreign key relationships
+Input files (located inside a selected dataset folder under ``0-data/``):
+- ``keys-primary.csv`` (or legacy ``primary_keys.csv``): primary key definitions
+- ``keys-foreign.csv`` (or legacy ``foreign_keys.csv``): foreign key relationships
 
 Output:
-- output-schema.xml: XML schema file for SQL Designer
+- ``<dataset>-schema.xml`` written to ``0-data/``
 """
 
 import csv
@@ -1293,29 +1293,35 @@ class SchemaGenerator:
         print(f"Successfully generated XML schema with {len(self.tables)} tables")
 
 def find_csv_folders(base_dir):
-    """Find all folders containing CSV files in the 0-data/csv directory"""
-    csv_dir = os.path.join(base_dir, '0-data', 'csv')
+    """Find dataset folders containing key CSV files under 0-data."""
+    data_dir = os.path.join(base_dir, '0-data')
     csv_folders = []
-    
-    if not os.path.exists(csv_dir):
-        return csv_folders
-    
-    # Check for CSV files directly in csv directory (legacy)
-    primary_file = os.path.join(csv_dir, 'keys-primary.csv')
-    foreign_file = os.path.join(csv_dir, 'keys-foreign.csv')
-    if os.path.exists(primary_file) and os.path.exists(foreign_file):
-        csv_folders.append(('csv', csv_dir))
-    
-    # Check subdirectories for CSV files
-    for item in os.listdir(csv_dir):
-        item_path = os.path.join(csv_dir, item)
-        if os.path.isdir(item_path):
-            primary_file = os.path.join(item_path, 'keys-primary.csv')
-            foreign_file = os.path.join(item_path, 'keys-foreign.csv')
+
+    def register_folder(name, folder_path):
+        # Support both new (keys-*.csv) and legacy ( *_keys.csv ) naming
+        candidates = [
+            ('keys-primary.csv', 'keys-foreign.csv'),
+            ('primary_keys.csv', 'foreign_keys.csv'),
+        ]
+        for primary_name, foreign_name in candidates:
+            primary_file = os.path.join(folder_path, primary_name)
+            foreign_file = os.path.join(folder_path, foreign_name)
             if os.path.exists(primary_file) and os.path.exists(foreign_file):
-                csv_folders.append((item, item_path))
-    
-    return csv_folders
+                csv_folders.append({
+                    'name': name,
+                    'path': folder_path,
+                    'primary': primary_file,
+                    'foreign': foreign_file,
+                })
+                return
+
+    if os.path.isdir(data_dir):
+        for item in os.listdir(data_dir):
+            item_path = os.path.join(data_dir, item)
+            if os.path.isdir(item_path):
+                register_folder(item, item_path)
+
+    return sorted(csv_folders, key=lambda entry: entry['name'].lower())
 
 def select_csv_folder(csv_folders):
     """Prompt user to select a CSV folder if multiple are available"""
@@ -1324,22 +1330,22 @@ def select_csv_folder(csv_folders):
         return None
     
     if len(csv_folders) == 1:
-        folder_name, folder_path = csv_folders[0]
-        print(f"Using CSV files from: {folder_name}")
-        return folder_name, folder_path
+        entry = csv_folders[0]
+        print(f"Using CSV files from: {entry['name']}")
+        return entry
     
     print("\nMultiple CSV folders found:")
-    for i, (folder_name, folder_path) in enumerate(csv_folders, 1):
-        print(f"  {i}. {folder_name}")
+    for i, entry in enumerate(csv_folders, 1):
+        print(f"  {i}. {entry['name']}")
     
     while True:
         try:
             choice = input(f"\nSelect folder (1-{len(csv_folders)}): ").strip()
             choice_idx = int(choice) - 1
             if 0 <= choice_idx < len(csv_folders):
-                folder_name, folder_path = csv_folders[choice_idx]
-                print(f"Selected: {folder_name}")
-                return folder_name, folder_path
+                entry = csv_folders[choice_idx]
+                print(f"Selected: {entry['name']}")
+                return entry
             else:
                 print(f"Please enter a number between 1 and {len(csv_folders)}")
         except ValueError:
@@ -1353,12 +1359,13 @@ def main():
     
     # select input from available CSV folders
     csv_folders = find_csv_folders(base_dir)
-    selected_folder = select_csv_folder(csv_folders)
-    folder_name, folder_path = selected_folder
-    
-    # Set up file paths based on selected folder
-    primary_keys_file = os.path.join(folder_path, 'keys-primary.csv')
-    foreign_keys_file = os.path.join(folder_path, 'keys-foreign.csv')
+    selected_entry = select_csv_folder(csv_folders)
+    if not selected_entry:
+        return
+
+    folder_name = selected_entry['name']
+    primary_keys_file = selected_entry['primary']
+    foreign_keys_file = selected_entry['foreign']
     output_dir = os.path.join(base_dir, '0-data')
     output_filename = f'{folder_name}-schema.xml'
     output_file = os.path.join(output_dir, output_filename)

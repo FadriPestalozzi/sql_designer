@@ -49,9 +49,10 @@ INNER JOIN production.ProductionOrders AS t2 ON t1."ProductionOrderID" = t2."Pro
 
 
 ### How to update visualization
-- export private keys and foreign keys from SQL database
-  - queries in folder 1-sql (.gitignored, available on Dyconex internal network)
-- store CSV-output in subfolder with name of chosen database
+- export primary keys and foreign keys from SQL database
+  - queries are available on the Dyconex internal network 
+- store the CSV output in `0-data/<DATABASE_NAME>/`
+  - preferred filenames: `keys-primary.csv` and `keys-foreign.csv` 
 - run python script keys_2_schema.py to create FOLDER_NAME-schema.xml
 
 

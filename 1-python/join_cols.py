@@ -4,7 +4,7 @@
 Usage: run the script and follow prompts.
 
 Behavior implemented per user request:
-- prompts user to choose among available database data folders (e.g. DWH_Dyconex) inside folder csv
+- prompts user to choose among available database data folders (e.g. DWH_Dyconex) inside `0-data`
 - uses columns.csv inside chosen folder as list of all available schemas, tables, columns
 - prompts user to choose iteratively between 1st and 2nd target-path
 - a target-path is a unique concatenation of schema-table-column
@@ -25,51 +25,97 @@ from collections import defaultdict, deque
 from typing import Dict, List, Tuple, Set  
 
 
-def find_csv_databases(base_dir: str) -> List[str]:
-    """Find all database folders in the csv directory"""
-    csv_dir = os.path.join(base_dir, '0-data', 'csv')
-    databases = []
-    
-    if not os.path.exists(csv_dir):
-        return databases
-    
-    for item in os.listdir(csv_dir):
-        item_path = os.path.join(csv_dir, item)
-        if os.path.isdir(item_path):
-            columns_file = os.path.join(item_path, 'columns.csv')
-            if os.path.exists(columns_file):
-                databases.append(item)
-    
-    return sorted(databases)
+def find_csv_databases(base_dir: str) -> List[Tuple[str, str]]:
+    """Find all database folders inside 0-data."""
+    data_dir = os.path.join(base_dir, '0-data')
+    databases: List[Tuple[str, str]] = []
+
+    def add_if_valid(name: str, path: str) -> None:
+        columns_file = os.path.join(path, 'columns.csv')
+        if os.path.exists(columns_file):
+            databases.append((name, path))
+
+    if os.path.isdir(data_dir):
+        for item in os.listdir(data_dir):
+            item_path = os.path.join(data_dir, item)
+            if os.path.isdir(item_path):
+                add_if_valid(item, item_path)
+
+    return sorted(databases, key=lambda entry: entry[0].lower())
+
+def _detect_delimiter(first_line: str) -> str:
+    """Heuristically detect delimiter between tab and comma."""
+    comma_count = first_line.count(',')
+    tab_count = first_line.count('\t')
+    if tab_count and not comma_count:
+        return '\t'
+    if comma_count and not tab_count:
+        return ','
+    if tab_count >= comma_count:
+        return '\t'
+    return ','
+
 
 def read_columns_csv(path: str) -> Tuple[Dict[str, List[str]], Dict[str, Set[str]], List[str]]:
     """Parse the columns.csv file.
+
+    Handles both comma/tab-delimited files and optional header rows.
 
     Returns:
       target_paths: List[str] - all unique schema-table-column paths
       column_to_tables: Dict[str, Set[str]] - mapping column name -> set of table names
       table_to_columns: Dict[str, List[str]] - mapping table name -> list of column names
     """
-    target_paths = []
+    target_paths: List[str] = []
     column_to_tables: Dict[str, Set[str]] = defaultdict(set)
     table_to_columns: Dict[str, List[str]] = defaultdict(list)
-    
-    with open(path, encoding='utf-8', errors='replace') as f:
-        reader = csv.DictReader(f, delimiter='\t')
-        for row in reader:
-            schema = row['TABLE_SCHEMA']
-            table = row['TABLE_NAME']
-            column = row['COLUMN_NAME']
-            
-            # Create target path as schema-table-column
-            target_path = f"{schema}-{table}-{column}"
-            target_paths.append(target_path)
-            
-            # Create mappings for table lookup
-            full_table_name = f"{schema}.{table}"
-            table_to_columns[full_table_name].append(column)
-            column_to_tables[column.lower()].add(full_table_name)
-    
+
+    if not os.path.exists(path):
+        return [], column_to_tables, table_to_columns
+
+    with open(path, encoding='utf-8', errors='replace', newline='') as f:
+        first_line = f.readline()
+        if not first_line:
+            return [], column_to_tables, table_to_columns
+
+        delimiter = _detect_delimiter(first_line)
+        f.seek(0)
+
+        reader = csv.reader(f, delimiter=delimiter, skipinitialspace=True)
+        try:
+            header_row = next(reader)
+        except StopIteration:
+            return [], column_to_tables, table_to_columns
+
+        header_clean = [cell.strip().upper() for cell in header_row]
+        has_header = {'TABLE_SCHEMA', 'TABLE_NAME', 'COLUMN_NAME'}.issubset(set(header_clean))
+
+        rows_to_process: List[List[str]] = []
+        if not has_header:
+            rows_to_process.append(header_row)
+
+        for row_values in reader:
+            rows_to_process.append(row_values)
+
+    for raw_row in rows_to_process:
+        row = [cell.strip() for cell in raw_row]
+        if len(row) < 3:
+            continue
+
+        schema = row[0]
+        table = row[1]
+        column = row[2]
+
+        if not schema or not table or not column:
+            continue
+
+        target_path = f"{schema}-{table}-{column}"
+        target_paths.append(target_path)
+
+        full_table_name = f"{schema}.{table}"
+        table_to_columns[full_table_name].append(column)
+        column_to_tables[column.lower()].add(full_table_name)
+
     return sorted(target_paths), column_to_tables, table_to_columns
 
 
@@ -283,26 +329,26 @@ def main():
     # Find available database folders
     databases = find_csv_databases(base)
     if not databases:
-        print('No database folders found in 0-data/csv/')
+        print('No database folders found in 0-data/')
         sys.exit(1)
 
     print('\nAvailable databases:')
-    for idx, db in enumerate(databases, 1):
-        print(f'{idx}. {db}')
+    for idx, (db_name, _) in enumerate(databases, 1):
+        print(f'{idx}. {db_name}')
 
     # Prompt user for database choice
     while True:
         choice = input(f'\nChoose database (1-{len(databases)}): ').strip()
         if choice.isdigit() and 1 <= int(choice) <= len(databases):
-            selected_db = databases[int(choice) - 1]
+            selected_db_name, selected_db_path = databases[int(choice) - 1]
             break
         print('Invalid choice')
 
-    print(f'Selected database: {selected_db}')
+    print(f'Selected database: {selected_db_name}')
     
     # Load columns from selected database
-    columns_path = os.path.join(base, '0-data', 'csv', selected_db, 'columns.csv')
-    schema_path = os.path.join(base, '0-data', f'{selected_db}-schema.xml')
+    columns_path = os.path.join(selected_db_path, 'columns.csv')
+    schema_path = os.path.join(base, '0-data', f'{selected_db_name}-schema.xml')
     
     if not os.path.exists(columns_path):
         print(f'Columns file not found: {columns_path}')
@@ -324,8 +370,8 @@ def main():
     print(f'Parsed {len(tables_in_schema)} tables and {sum(len(v) for v in relations.values())} relation entries.')
 
     # Prompt for two target paths
-    target_path1 = select_target_path(target_paths, "Choose first target path:", selected_db, tables_in_schema)
-    target_path2 = select_target_path(target_paths, "Choose second target path:", selected_db, tables_in_schema)
+    target_path1 = select_target_path(target_paths, "Choose first target path:", selected_db_name, tables_in_schema)
+    target_path2 = select_target_path(target_paths, "Choose second target path:", selected_db_name, tables_in_schema)
     
     # Convert target paths to table and column names
     table1, col1 = path_to_table_column(target_path1)
@@ -364,7 +410,7 @@ def main():
         else:
             print(f'  {t} (start)')
 
-    sql = build_sql_from_path(path, selected_db, table_to_schema)
+    sql = build_sql_from_path(path, selected_db_name, table_to_schema)
     print('\nGenerated SQL:')
     print(sql)
 
