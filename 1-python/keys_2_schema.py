@@ -8,9 +8,10 @@ and generates an XML schema file compatible with WWW SQL Designer.
 Input files (located inside a selected dataset folder under ``0-data/``):
 - ``keys-primary.csv`` (or legacy ``primary_keys.csv``): primary key definitions
 - ``keys-foreign.csv`` (or legacy ``foreign_keys.csv``): foreign key relationships
+  - Files must be TAB-delimited (TSV).
 
 Output:
-- ``<dataset>-schema.xml`` written to ``0-data/``
+- ``<dataset>-schema.xml`` written to the same dataset folder as the input CSV files (e.g., ``0-data/<dataset>/``)
 """
 
 import csv
@@ -112,55 +113,53 @@ class SchemaGenerator:
         self.occupied_areas = []  # Track all occupied rectangular areas
     
     def read_primary_keys(self):
-        """Read primary key definitions from CSV"""
+        """Read primary key definitions from TSV (tab-delimited)"""
         print(f"Reading primary keys from {self.primary_keys_file}")
-        
-        with open(self.primary_keys_file, 'r', encoding='utf-8-sig') as file:
-            reader = csv.DictReader(file)
+        with open(self.primary_keys_file, 'r', encoding='utf-8-sig', newline='') as f:
+            reader = csv.DictReader(f, delimiter='\t')
             for row in reader:
                 table_name = row['TableName']
                 column_name = row['ColumnName']
                 key_order = int(row['KeyOrder'])
-                
+
                 # Create table if it doesn't exist
                 if table_name not in self.tables:
                     self.tables[table_name] = Table(table_name)
-                
+
                 # Add column and primary key
                 self.tables[table_name].add_column(column_name, is_primary=True)
                 self.tables[table_name].add_primary_key(column_name, key_order)
-        
+
         print(f"Loaded {len(self.tables)} tables from primary keys")
     
     def read_foreign_keys(self):
-        """Read foreign key relationships from CSV"""
+        """Read foreign key relationships from TSV (tab-delimited)"""
         print(f"Reading foreign keys from {self.foreign_keys_file}")
-        
         foreign_key_count = 0
-        with open(self.foreign_keys_file, 'r', encoding='utf-8-sig') as file:
-            reader = csv.DictReader(file)
+        with open(self.foreign_keys_file, 'r', encoding='utf-8-sig', newline='') as f:
+            reader = csv.DictReader(f, delimiter='\t')
             for row in reader:
                 parent_table = row['ParentTable']
-                referenced_table = row['ReferencedTable'] 
+                referenced_table = row['ReferencedTable']
                 parent_column = row['ParentColumn']
                 referenced_column = row['ReferencedColumn']
-                
+
                 # Create parent table if it doesn't exist
                 if parent_table not in self.tables:
                     self.tables[parent_table] = Table(parent_table)
-                
+
                 # Create referenced table if it doesn't exist
                 if referenced_table not in self.tables:
                     self.tables[referenced_table] = Table(referenced_table)
-                
+
                 # Add foreign key relationship
                 self.tables[parent_table].add_foreign_key(parent_column, referenced_table, referenced_column)
-                
+
                 # Ensure referenced column exists in referenced table
                 self.tables[referenced_table].add_column(referenced_column)
-                
+
                 foreign_key_count += 1
-        
+
         print(f"Loaded {foreign_key_count} foreign key relationships")
         print(f"Total tables: {len(self.tables)}")
     
@@ -1366,7 +1365,8 @@ def main():
     folder_name = selected_entry['name']
     primary_keys_file = selected_entry['primary']
     foreign_keys_file = selected_entry['foreign']
-    output_dir = os.path.join(base_dir, '0-data')
+    # Write the schema XML next to the source CSV files
+    output_dir = selected_entry['path']
     output_filename = f'{folder_name}-schema.xml'
     output_file = os.path.join(output_dir, output_filename)
     

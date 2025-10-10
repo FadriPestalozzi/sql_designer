@@ -348,7 +348,8 @@ def main():
     
     # Load columns from selected database
     columns_path = os.path.join(selected_db_path, 'columns.csv')
-    schema_path = os.path.join(base, '0-data', f'{selected_db_name}-schema.xml')
+    # Schema XML is generated alongside the CSVs inside the selected database folder
+    schema_path = os.path.join(selected_db_path, f'{selected_db_name}-schema.xml')
     
     if not os.path.exists(columns_path):
         print(f'Columns file not found: {columns_path}')
