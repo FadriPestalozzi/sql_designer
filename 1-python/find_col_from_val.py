@@ -267,8 +267,16 @@ def render_sql(
             MatchCount INT     NOT NULL
         );
 
+        IF OBJECT_ID('tempdb..#Samples') IS NOT NULL DROP TABLE #Samples;
+
         DECLARE @RowFilter NVARCHAR(MAX) = N'{escaped_row_filter}';
         DECLARE @FullTable NVARCHAR(512) = N'{full_table_ident}';
+
+        SELECT TOP (0)
+            CAST(NULL AS SYSNAME) AS ColumnName,
+            t.*
+        INTO #Samples
+        FROM {full_table_ident} AS t;
 
     """)
 
@@ -288,16 +296,24 @@ def render_sql(
     IF EXISTS (
         SELECT 1
         FROM ' + @FullTable + N'
-        WHERE ' + QUOTENAME(@Col) + N' LIKE N''%'' + @p + N''%''
+                WHERE ' + QUOTENAME(@Col) + N' = @p
           AND ' + @RowFilter + N'
     )
     BEGIN
-        INSERT INTO #Hits (ColumnName, MatchCount)
-        SELECT N''' + REPLACE(@Col, '''', '''''') + N''',
-               COUNT(*)
-        FROM ' + @FullTable + N'
-        WHERE ' + QUOTENAME(@Col) + N' LIKE N''%'' + @p + N''%''
-          AND ' + @RowFilter + N';
+     INSERT INTO #Hits (ColumnName, MatchCount)
+     SELECT N''' + REPLACE(@Col, '''', '''''') + N''',
+         COUNT(*)
+     FROM ' + @FullTable + N'
+     WHERE ' + QUOTENAME(@Col) + N' = @p
+       AND ' + @RowFilter + N';
+
+     INSERT INTO #Samples
+     SELECT TOP (5)
+         N''' + REPLACE(@Col, '''', '''''') + N''',
+         t.*
+     FROM ' + @FullTable + N' AS t
+     WHERE ' + QUOTENAME(@Col) + N' = @p
+    AND ' + @RowFilter + N';
     END';
 
             EXEC sp_executesql @sql, N'@p NVARCHAR(200)', @p = @SearchValue;
@@ -313,6 +329,10 @@ def render_sql(
         SELECT ColumnName, MatchCount
         FROM   #Hits
         ORDER BY ColumnName;
+
+    SELECT *
+    FROM   #Samples
+    ORDER BY ColumnName;
 
         SELECT
             TargetTable = @FullTable,
