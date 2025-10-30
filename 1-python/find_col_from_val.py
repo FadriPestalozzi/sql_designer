@@ -272,15 +272,46 @@ def render_sql(
         DECLARE @RowFilter NVARCHAR(MAX) = N'{escaped_row_filter}';
         DECLARE @FullTable NVARCHAR(512) = N'{full_table_ident}';
 
-        SELECT TOP (0)
-            CAST(NULL AS SYSNAME) AS ColumnName,
-            t.*
-        INTO #Samples
-        FROM {full_table_ident} AS t;
+            -- Create a minimal #Samples table that stores the matching column name
+            -- and a JSON representation of the matching row. Using JSON for the
+            -- sample row avoids trying to INSERT explicit values for identity
+            -- columns or having to generate explicit column lists.
+            IF OBJECT_ID('tempdb..#Samples') IS NOT NULL DROP TABLE #Samples;
+            CREATE TABLE #Samples (
+                ColumnName SYSNAME NOT NULL,
+                RowJson    NVARCHAR(MAX) NULL
+            );
+
+                -- Build a comma-separated list of non-identity columns from the target table.
+                -- We'll use this to INSERT into #Samples without attempting to supply
+                -- explicit values for any identity column (which would raise Msg 8101).
+                DECLARE @NonIdentityCols NVARCHAR(MAX) = N'';
+                DECLARE @NonIdentityColsT NVARCHAR(MAX) = N'';
+                                SELECT @NonIdentityCols = COALESCE(@NonIdentityCols + N', ', N'') + QUOTENAME(c.name)
+                                FROM   {db_ident}.sys.tables AS t_tab
+                                JOIN   {db_ident}.sys.schemas AS s_tab ON s_tab.schema_id = t_tab.schema_id
+                                JOIN   {db_ident}.sys.columns AS c ON c.object_id = t_tab.object_id
+                                WHERE  s_tab.name = N'{escape_sql_literal(schema)}'
+                                    AND  t_tab.name = N'{escape_sql_literal(table)}'
+                                    AND  COLUMNPROPERTY(t_tab.object_id, c.name, N'IsIdentity') = 0
+                                ORDER BY c.column_id;
+                                IF (@NonIdentityCols = N'')
+                                BEGIN
+                                                -- No non-identity columns found (very unusual); fall back to all columns.
+                                                SELECT @NonIdentityCols = COALESCE(@NonIdentityCols + N', ', N'') + QUOTENAME(c.name)
+                                                FROM   {db_ident}.sys.tables AS t_tab
+                                                JOIN   {db_ident}.sys.schemas AS s_tab ON s_tab.schema_id = t_tab.schema_id
+                                                JOIN   {db_ident}.sys.columns AS c ON c.object_id = t_tab.object_id
+                                                WHERE  s_tab.name = N'{escape_sql_literal(schema)}'
+                                                    AND  t_tab.name = N'{escape_sql_literal(table)}'
+                                                ORDER BY c.column_id;
+                                END
+                                -- t.-prefixed version for the SELECT list
+                                SET @NonIdentityColsT = N't.' + REPLACE(@NonIdentityCols, N', ', N', t.');
 
     """)
 
-    cursor_block = textwrap.dedent("""
+    cursor_block = textwrap.dedent(f"""
         DECLARE @Col SYSNAME;
         DECLARE @sql NVARCHAR(MAX);
 
@@ -293,30 +324,29 @@ def render_sql(
         WHILE @@FETCH_STATUS = 0
         BEGIN
             SET @sql = N'
-    IF EXISTS (
-        SELECT 1
-        FROM ' + @FullTable + N'
-                WHERE ' + QUOTENAME(@Col) + N' = @p
-          AND ' + @RowFilter + N'
-    )
-    BEGIN
-     INSERT INTO #Hits (ColumnName, MatchCount)
-     SELECT N''' + REPLACE(@Col, '''', '''''') + N''',
-         COUNT(*)
-     FROM ' + @FullTable + N'
-     WHERE ' + QUOTENAME(@Col) + N' = @p
-       AND ' + @RowFilter + N';
+IF EXISTS (
+    SELECT 1
+    FROM ' + @FullTable + N'
+            WHERE ' + QUOTENAME(@Col) + N' = @p
+      AND ' + @RowFilter + N'
+)
+BEGIN
+ INSERT INTO #Hits (ColumnName, MatchCount)
+ SELECT @colName,
+     COUNT(*)
+ FROM ' + @FullTable + N'
+ WHERE ' + QUOTENAME(@Col) + N' = @p
+   AND ' + @RowFilter + N';
 
-     INSERT INTO #Samples
-     SELECT TOP (5)
-         N''' + REPLACE(@Col, '''', '''''') + N''',
-         t.*
-     FROM ' + @FullTable + N' AS t
-     WHERE ' + QUOTENAME(@Col) + N' = @p
-    AND ' + @RowFilter + N';
-    END';
+ INSERT INTO #Samples (ColumnName, RowJson)
+ SELECT TOP (5) @colName,
+     (SELECT t.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER)
+ FROM ' + @FullTable + N' AS t
+ WHERE ' + QUOTENAME(@Col) + N' = @p
+ AND ' + @RowFilter + N';
+END';
 
-            EXEC sp_executesql @sql, N'@p NVARCHAR(200)', @p = @SearchValue;
+            EXEC sp_executesql @sql, N'@p NVARCHAR(200), @colName SYSNAME', @p = @SearchValue, @colName = @Col;
 
             FETCH NEXT FROM col_cur INTO @Col;
         END
