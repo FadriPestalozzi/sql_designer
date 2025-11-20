@@ -327,7 +327,7 @@ def render_sql(
 IF EXISTS (
     SELECT 1
     FROM ' + @FullTable + N'
-            WHERE ' + QUOTENAME(@Col) + N' = @p
+            WHERE ' + QUOTENAME(@Col) + N' LIKE N''%'' + @p + N''%''
       AND ' + @RowFilter + N'
 )
 BEGIN
@@ -335,14 +335,14 @@ BEGIN
  SELECT @colName,
      COUNT(*)
  FROM ' + @FullTable + N'
- WHERE ' + QUOTENAME(@Col) + N' = @p
+ WHERE ' + QUOTENAME(@Col) + N' LIKE N''%'' + @p + N''%''
    AND ' + @RowFilter + N';
 
  INSERT INTO #Samples (ColumnName, RowJson)
  SELECT TOP (5) @colName,
      (SELECT t.* FOR JSON PATH, WITHOUT_ARRAY_WRAPPER)
  FROM ' + @FullTable + N' AS t
- WHERE ' + QUOTENAME(@Col) + N' = @p
+ WHERE ' + QUOTENAME(@Col) + N' LIKE N''%'' + @p + N''%''
  AND ' + @RowFilter + N';
 END';
 
